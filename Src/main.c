@@ -260,7 +260,7 @@ fastPID speedPid = { // commutation speed loop time
     .Ki = 0,
     .Kd = 100,
     .integral_limit = 10000,
-    .output_limit = 50000
+    .output_limit = 2047
 };
 
 fastPID currentPid = { // 1khz loop time
@@ -360,6 +360,7 @@ uint16_t ADC_CCR = 30;
 uint16_t current_angle = 90;
 uint16_t desired_angle = 90;
 char return_to_center = 0;
+uint16_t target_rpm = 0;
 uint16_t target_e_com_time = 0;
 int16_t Speed_pid_output;
 char use_speed_control_loop = 0;
@@ -448,7 +449,7 @@ char send_telemetry = 0;
 char telemetry_done = 0;
 char prop_brake_active = 0;
 
-uint8_t eepromBuffer[176] = { 0 };
+uint8_t eepromBuffer[183] = { 0 };
 
 char dshot_telemetry = 0;
 
@@ -618,9 +619,37 @@ float doPidCalculations(struct fastPID* pidnow, int actual, int target)
     return pidnow->pid_output;
 }
 
+int32_t doPidCalculations2(struct fastPID *pidnow, int actual, int target){
+
+	pidnow->error = target - actual;
+	pidnow->integral += pidnow->error;
+	if(pidnow->integral > pidnow->integral_limit){
+		pidnow->integral = pidnow->integral_limit;
+	}
+	if(pidnow->integral < -pidnow->integral_limit){
+		pidnow->integral = -pidnow->integral_limit;
+	}
+
+	pidnow->derivative = (pidnow->error - pidnow->last_error); // *10000
+	pidnow->last_error = pidnow->error;
+
+	pidnow->pid_output = ((int32_t)(pidnow->error*pidnow->Kp))/(int32_t)100
+                       + (int32_t)(pidnow->Ki * pidnow->integral) / (int32_t)10000
+	                     + ((int32_t)(pidnow->Kd*pidnow->derivative));
+
+
+	if (pidnow->pid_output > pidnow->output_limit){
+		pidnow->pid_output = pidnow->output_limit;
+	}else if(pidnow->pid_output < -pidnow->output_limit){
+		pidnow->pid_output = -pidnow->output_limit;
+	}
+	return pidnow->pid_output;
+
+}
+
 void loadEEpromSettings()
 {
-    read_flash_bin(eepromBuffer, EEPROM_START_ADD, 176);
+    read_flash_bin(eepromBuffer, EEPROM_START_ADD, 183);
 
     if (eepromBuffer[17] == 0x01) {
         dir_reversed = 1;
@@ -818,6 +847,20 @@ void loadEEpromSettings()
     if (!comp_pwm) {
         bi_direction = 0;
     }
+		
+		if(eepromBuffer[48]==0){
+        drive_by_rpm = 0;
+		}else{
+        drive_by_rpm = 1;
+        MINIMUM_RPM_SPEED_CONTROL=eepromBuffer[49]*200;
+        MAXIMUM_RPM_SPEED_CONTROL=eepromBuffer[50]*200;
+        
+        speedPid.Kp = eepromBuffer[51];
+        speedPid.Ki = eepromBuffer[52];
+        speedPid.Kd = eepromBuffer[53];
+        speedPid.integral_limit = eepromBuffer[54]*100000;
+    }
+			
 }
 
 void saveEEpromSettings()
@@ -856,7 +899,7 @@ void saveEEpromSettings()
         eepromBuffer[22] = 0x00;
     }
     eepromBuffer[23] = advance_level;
-    save_flash_nolib(eepromBuffer, 176, EEPROM_START_ADD);
+    save_flash_nolib(eepromBuffer, 183, EEPROM_START_ADD);
 }
 
 uint16_t getSmoothedCurrent()
@@ -1168,7 +1211,9 @@ void setInput()
         } else {
             if (use_speed_control_loop) {
                 if (drive_by_rpm) {
-                    target_e_com_time = 60000000 / map(adjusted_input, 47, 2047, MINIMUM_RPM_SPEED_CONTROL, MAXIMUM_RPM_SPEED_CONTROL) / (motor_poles / 2);
+									  target_rpm = map(adjusted_input , 47, 2047, MINIMUM_RPM_SPEED_CONTROL, MAXIMUM_RPM_SPEED_CONTROL);
+								    target_e_com_time = 60000000 / target_rpm / (motor_poles/2) ;
+                    //target_e_com_time = 60000000 / map(adjusted_input, 47, 2047, MINIMUM_RPM_SPEED_CONTROL, MAXIMUM_RPM_SPEED_CONTROL) / (motor_poles / 2);
                     if (adjusted_input < 47) { // dead band ?
                         input = 0;
                         speedPid.error = 0;
@@ -1442,16 +1487,19 @@ void tenKhzRoutine()
                 }
             }
             if (use_speed_control_loop && running) {
-                input_override += doPidCalculations(&speedPid, e_com_time, target_e_com_time) / 10000;
-                if (input_override > 2047) {
+								uint32_t rpm = 60000000 / (e_com_time * (motor_poles>>1));
+                //input_override = (target_rpm*2047)/(motor_kv*battery_voltage/100) - doPidCalculations(&speedPid, rpm, target_rpm)/10000;
+                input_override = (target_rpm*2047)/(motor_kv*battery_voltage/100) + (float) doPidCalculations2(&speedPid, rpm, target_rpm);
+
+                if(input_override > 2047){
                     input_override = 2047;
                 }
-                if (input_override < 0) {
-                    input_override = 0;
+                if(input_override < 48){
+                    input_override = 48;
                 }
-                if (zero_crosses < 100) {
+                if(zero_crosses < 100){
                     speedPid.integral = 0;
-                }
+                }							
             }
         }
         if (maximum_throttle_change_ramp) {
@@ -1768,6 +1816,7 @@ int main(void)
     use_speed_control_loop = 1;
     use_sin_start = 0;
     target_e_com_time = 60000000 / FIXED_SPEED_MODE_RPM / (motor_poles / 2);
+		target_rpm = FIXED_SPEED_MODE_RPM;
     input = 48;
 #endif
 
