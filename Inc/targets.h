@@ -246,6 +246,17 @@
 #define HARDWARE_GROUP_AT_B
 #define HARDWARE_GROUP_AT_045
 #endif
+
+#ifdef SKYSTARS_AM60_F421
+#define FIRMWARE_NAME "Skystars 60A"
+#define FILE_NAME "SKYSTARS_AM60_F421"
+#define DEAD_TIME 30
+#define HARDWARE_GROUP_AT_B
+#define HARDWARE_GROUP_AT_045
+#define PA6_VOLTAGE
+#define USE_SERIAL_TELEMETRY
+#endif
+
 /****************************************Generic********************************************/
 
 #ifdef AT32F421_PB4_054
