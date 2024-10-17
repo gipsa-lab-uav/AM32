@@ -229,6 +229,8 @@ an settings option)
 #include "sounds.h"
 #include "targets.h"
 #include <stdint.h>
+#include <string.h>
+#include <assert.h>
 
 #ifdef USE_LED_STRIP
 #include "WS2812.h"
@@ -356,22 +358,8 @@ uint16_t low_cell_volt_cutoff = 330; // 3.3volts per cell
 
 //=========================== END EEPROM Defaults ===========================
 
-#ifdef USE_MAKE
-typedef struct __attribute__((packed)) {
-    uint8_t version_major;
-    uint8_t version_minor;
-    char device_name[12];
-} firmware_info_s;
-
-firmware_info_s __attribute__((section(".firmware_info"))) firmware_info = {
-    version_major : VERSION_MAJOR,
-    version_minor : VERSION_MINOR,
-    device_name : FIRMWARE_NAME
-};
-#endif
 const char filename[30] __attribute__((section(".file_name"))) = FILE_NAME;
-
-char firmware_name[12] = FIRMWARE_NAME;
+_Static_assert(sizeof(FIRMWARE_NAME) <=13,"Firmware name too long");   // max 12 character firmware name plus NULL 
 
 uint8_t EEPROM_VERSION;
 // move these to targets folder or peripherals for each mcu
@@ -785,7 +773,6 @@ void loadEEpromSettings()
             RC_CAR_REVERSE = 0;
         }
         if (eepromBuffer[39] == 0x01) {
-					auto_advance = 1;
 #ifdef HAS_HALL_SENSORS
             USE_HALL_SENSOR = 1;
 #else
@@ -834,7 +821,7 @@ void loadEEpromSettings()
             sine_mode_power = eepromBuffer[45];
         }
 
-        if (eepromBuffer[46] >= 0 && eepromBuffer[46] < 10) {
+        if (eepromBuffer[46] < 10) {
             switch (eepromBuffer[46]) {
             case AUTO_IN:
                 dshot = 0;
@@ -861,7 +848,11 @@ void loadEEpromSettings()
             servoPwm = 0;
             EDT_ARMED = 1;
         }
-
+        if (eepromBuffer[47] == 0x01) {
+            auto_advance = 1;
+        } else {
+            auto_advance = 0;
+        }
         if (motor_kv < 300) {
             low_rpm_throttle_limit = 0;
         }
@@ -1385,7 +1376,7 @@ void setInput()
             }
         }
         if (!prop_brake_active) {
-            if (input >= 47 && (zero_crosses < (30 >> stall_protection))) {
+            if (input >= 47 && (zero_crosses < (30U >> stall_protection))) {
                 if (duty_cycle_setpoint < min_startup_duty) {
                     duty_cycle_setpoint = min_startup_duty;
                 }
@@ -1778,10 +1769,48 @@ void runBrushedLoop()
 }
 #endif
 
+
+/*
+  check device info from the bootloader, confirming pin code and eeprom location
+ */
+static void checkDeviceInfo(void)
+{
+#define DEVINFO_MAGIC1 0x5925e3da
+#define DEVINFO_MAGIC2 0x4eb863d9
+
+    const struct devinfo {
+        uint32_t magic1;
+        uint32_t magic2;
+        const uint8_t deviceInfo[9];
+    } *devinfo = (struct devinfo *)(0x1000 - 32);
+    if (devinfo->magic1 != DEVINFO_MAGIC1 ||
+        devinfo->magic2 != DEVINFO_MAGIC2) {
+        // bootloader does not support this feature, nothing to do
+        return;
+    }
+    // change eeprom_address based on the code in the bootloaders device info
+    switch (devinfo->deviceInfo[4]) {
+        case 0x1f:
+            eeprom_address = 0x08007c00;
+            break;
+        case 0x35:
+            eeprom_address = 0x0800f800;
+            break;
+        case 0x2b:
+            eeprom_address = 0x0801f800;
+            break;
+    }
+
+    // TODO: check pin code and reboot to bootloader if incorrect
+
+}
+
 int main(void)
 {
 
     initAfterJump();
+
+    checkDeviceInfo();
 
     initCorePeripherals();
 
@@ -1789,32 +1818,12 @@ int main(void)
 
     loadEEpromSettings();
 
- //   EEPROM_VERSION = *(uint8_t*)(0x08000FFC);
-
-	  if((*(uint32_t*)(0x08000FE0)) == 0xf8){
-			eeprom_address = (uint32_t)0x0800F800;
-		}
-
-	
-#ifdef USE_MAKE
-    if (firmware_info.version_major != eepromBuffer[3] || firmware_info.version_minor != eepromBuffer[4]) {
-        eepromBuffer[3] = firmware_info.version_major;
-        eepromBuffer[4] = firmware_info.version_minor;
-        for (int i = 0; i < 12; i++) {
-            eepromBuffer[5 + i] = firmware_info.device_name[i];
-        }
-        saveEEpromSettings();
-    }
-#else
     if (VERSION_MAJOR != eepromBuffer[3] || VERSION_MINOR != eepromBuffer[4]) {
         eepromBuffer[3] = VERSION_MAJOR;
         eepromBuffer[4] = VERSION_MINOR;
-        for (int i = 0; i < 12; i++) {
-            eepromBuffer[5 + i] = (uint8_t)FIRMWARE_NAME[i];
-        }
+        strncpy((char *)&eepromBuffer[5], FIRMWARE_NAME, 12);
         saveEEpromSettings();
     }
-#endif
 
     if (use_sin_start) {
         //    min_startup_duty = sin_mode_min_s_d;
