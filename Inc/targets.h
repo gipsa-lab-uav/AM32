@@ -832,6 +832,34 @@
 #define PA6_NTC_ONLY
 #endif
 
+#ifdef ODD_80A_F421
+#define FIRMWARE_NAME "ODD_80A_F421"
+#define FILE_NAME "ODD_80A_F421"
+#define DEAD_TIME 80
+#define HARDWARE_GROUP_AT_B
+#define HARDWARE_GROUP_AT_045
+#define USE_SERIAL_TELEMETRY
+#define USE_LED_STRIP
+#define WS2812_PIN GPIO_PINS_8
+#endif
+
+#ifdef ODD_PRO600102RGB_F421
+#define FIRMWARE_NAME "ODD_PRO_F421"
+#define FILE_NAME "ODD_PRO600102RGB_F421"
+#define DEAD_TIME 60
+#define HARDWARE_GROUP_AT_B
+#define HARDWARE_GROUP_AT_045
+#define USE_SERIAL_TELEMETRY
+//#define USE_RGB_LED
+#define ADC_CHANNEL_CURRENT ADC_CHANNEL_3
+#define ADC_CHANNEL_VOLTAGE ADC_CHANNEL_6
+#define TARGET_VOLTAGE_DIVIDER  110
+#define MILLIVOLT_PER_AMP       25
+#define CURRENT_OFFSET          0    
+#define RAMP_SPEED_LOW_RPM      1
+#define RAMP_SPEED_HIGH_RPM     2
+#endif
+
 
 /*****************************************************AT32F415 targets ************************************************/
 
