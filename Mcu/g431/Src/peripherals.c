@@ -190,7 +190,7 @@ void MX_TIM1_Init(void)
     LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM1);
     TIM_InitStruct.Prescaler = 0;
     TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
-    TIM_InitStruct.Autoreload = 6249;
+    TIM_InitStruct.Autoreload = TIM1_AUTORELOAD;
     TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
     TIM_InitStruct.RepetitionCounter = 0;
     LL_TIM_Init(TIM1, &TIM_InitStruct);
@@ -384,7 +384,7 @@ void MX_TIM17_Init(void)
 {
     LL_TIM_InitTypeDef TIM_InitStruct = { 0 };
     LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_TIM17);
-    TIM_InitStruct.Prescaler = 149;
+    TIM_InitStruct.Prescaler = 159;
     TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
     TIM_InitStruct.Autoreload = 65535;
     TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;

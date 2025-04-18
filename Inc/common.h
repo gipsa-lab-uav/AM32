@@ -1,7 +1,10 @@
+#include <stdint.h>
+#include "eeprom.h"
+
 #pragma once
 
+extern EEprom_t eepromBuffer;
 extern uint32_t eeprom_address;
-extern uint8_t eepromBuffer[184]; // 183
 extern uint16_t TIMER1_MAX_ARR;
 extern uint16_t dshot_frametime_high;
 extern uint16_t dshot_frametime_low;
@@ -23,13 +26,16 @@ extern char ic_timer_prescaler;
 extern uint8_t buffersize;
 extern char output_timer_prescaler;
 extern uint8_t compute_dshot_flag;
+extern uint16_t battery_voltage;
+extern int16_t actual_current;
+extern uint16_t e_rpm;
+extern uint32_t average_interval;
+
+
 #ifdef STMICRO
 extern GPIO_TypeDef* current_GPIO_PORT;
-#ifndef MCU_F031
+#if !defined(MCU_F031) && !defined(MCU_G031)
 extern COMP_TypeDef* active_COMP;
-#endif
-#ifdef MCU_F031
-extern char input_ready;
 #endif
 #endif
 #ifdef GIGADEVICES
@@ -44,7 +50,9 @@ extern char dshot_extended_telemetry;
 extern char EDT_ARM_ENABLE;
 extern char EDT_ARMED;
 extern uint16_t send_extended_dshot;
-
+#ifdef NEED_INPUT_READY
+extern volatile char input_ready;
+#endif
 // typedef struct PID{
 //	float error;
 //	float Kp;
@@ -70,3 +78,15 @@ typedef struct fastPID {
     int32_t integral_limit;
     int32_t output_limit;
 } fastPID;
+
+/*
+  input signal types
+ */
+enum inputType {
+    AUTO_IN = 0,
+    DSHOT_IN = 1,
+    SERVO_IN = 2,
+    SERIAL_IN = 3,
+    EDTARM_IN = 4,
+    DRONECAN_IN = 5,
+};

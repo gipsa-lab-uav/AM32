@@ -86,7 +86,7 @@ void TIM0_Init(void)
     timer_initpara.prescaler = 0;
     timer_initpara.alignedmode = TIMER_COUNTER_EDGE;
     timer_initpara.counterdirection = TIMER_COUNTER_UP;
-    timer_initpara.period = 3000;
+    timer_initpara.period = TIM1_AUTORELOAD;
     timer_initpara.clockdivision = TIMER_CKDIV_DIV1;
     timer_initpara.repetitioncounter = 0;
     timer_init(TIMER0, &timer_initpara);
@@ -225,7 +225,7 @@ void TIMER16_Init(void)
 {
     rcu_periph_clock_enable(RCU_TIMER16);
     TIMER_CAR(TIMER16) = 0xFFFF;
-    TIMER_PSC(TIMER16) = 35;
+    TIMER_PSC(TIMER16) = 71;
     timer_auto_reload_shadow_enable(TIMER16);
     timer_enable(TIMER16);
 }
@@ -245,11 +245,12 @@ void MX_GPIO_Init(void) { }
 
 void UN_TIM_Init(void)
 {
+    rcu_periph_clock_enable(RCU_GPIOA);
     rcu_periph_clock_enable(RCU_GPIOB);
     rcu_periph_clock_enable(RCU_DMA);
 
-    gpio_output_options_set(GPIOB, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_4);
-    gpio_af_set(GPIOB, GPIO_AF_1, GPIO_PIN_4);
+    gpio_output_options_set(INPUT_PIN_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, INPUT_PIN);
+    gpio_af_set(INPUT_PIN_PORT, INPUT_PIN_AF, INPUT_PIN);
 
     dma_periph_address_config(INPUT_DMA_CHANNEL,
         (uint32_t)&TIMER_CH0CV(IC_TIMER_REGISTER));
@@ -269,12 +270,13 @@ void UN_TIM_Init(void)
     NVIC_SetPriority(IC_DMA_IRQ_NAME, 1);
     NVIC_EnableIRQ(IC_DMA_IRQ_NAME);
     rcu_periph_clock_enable(RCU_TIMER2);
+    rcu_periph_clock_enable(RCU_TIMER14);
     TIMER_CAR(TIMER2) = 0xFFFF;
     TIMER_PSC(TIMER2) = 10;
     /* enable a TIMER */
 
     //	LL_TIM_DisableARRPreload(IC_TIMER_REGISTER);
-    timer_auto_reload_shadow_disable(TIMER2);
+    timer_auto_reload_shadow_disable(IC_TIMER_REGISTER);
 
     timer_ic_parameter_struct timer_icinitpara;
     timer_channel_input_struct_para_init(&timer_icinitpara);
@@ -283,13 +285,13 @@ void UN_TIM_Init(void)
     timer_icinitpara.icselection = TIMER_IC_SELECTION_DIRECTTI;
     timer_icinitpara.icprescaler = TIMER_IC_PSC_DIV1;
     timer_icinitpara.icfilter = 0x0;
-    timer_input_pwm_capture_config(TIMER2, TIMER_CH_0, &timer_icinitpara);
+    timer_input_pwm_capture_config(IC_TIMER_REGISTER, IC_TIMER_CHANNEL, &timer_icinitpara);
 
     // NVIC_SetPriority(TIMER2_IRQn, 0);
     //  NVIC_EnableIRQ(TIMER2_IRQn);
-    timer_enable(TIMER2);
+    timer_enable(IC_TIMER_REGISTER);
 
-    gpio_mode_set(GPIOB, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO_PIN_4);
+    gpio_mode_set(INPUT_PIN_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, INPUT_PIN);
 }
 
 #ifdef USE_RGB_LED // has 3 color led
@@ -327,39 +329,6 @@ void LED_GPIO_init()
 }
 
 #endif
-
-void disableComTimerInt()
-{
-    TIMER_DMAINTEN(COM_TIMER) &= (~(uint32_t)TIMER_INT_UP);
-}
-
-void enableComTimerInt()
-{
-    TIMER_DMAINTEN(COM_TIMER) |= (uint32_t)TIMER_INT_UP;
-}
-
-void setAndEnableComInt(uint16_t time)
-{
-    TIMER_CNT(COM_TIMER) = 0;
-    TIMER_CAR(COM_TIMER) = time;
-    TIMER_INTF(COM_TIMER) = 0x00;
-    TIMER_DMAINTEN(COM_TIMER) |= (uint32_t)TIMER_INT_UP;
-}
-
-uint16_t getintervaTimerCount() { return TIMER_CNT(INTERVAL_TIMER); }
-
-void setintervaTimerCount(uint16_t intertime) { TIMER_CNT(INTERVAL_TIMER) = 0; }
-
-void setPrescalerPWM(uint16_t presc) { TIMER_PSC(TIMER0) = presc; }
-
-void setAutoReloadPWM(uint16_t relval) { TIMER_CAR(TIMER0) = relval; }
-
-void setDutyCycleAll(uint16_t newdc)
-{
-    TIMER_CH0CV(TIMER0) = newdc;
-    TIMER_CH1CV(TIMER0) = newdc;
-    TIMER_CH2CV(TIMER0) = newdc;
-}
 
 void setPWMCompare1(uint16_t compareone) { TIMER_CH0CV(TIMER0) = compareone; }
 void setPWMCompare2(uint16_t comparetwo) { TIMER_CH1CV(TIMER0) = comparetwo; }

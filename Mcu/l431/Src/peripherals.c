@@ -47,7 +47,6 @@ void initCorePeripherals(void)
 
 void initAfterJump()
 {
-    SCB->VTOR = 0x08001000;
     __enable_irq();
 }
 
@@ -61,17 +60,73 @@ void SystemClock_Config(void)
   while (LL_PWR_IsActiveFlag_VOS() != 0)
   {
   }
+
+#ifdef USE_HSE
+  /*
+    using high speed external oscillator
+   */
+  LL_RCC_HSE_EnableBypass();
+  LL_RCC_HSE_Enable();
+#if HSE_VALUE == 24000000
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSE, LL_RCC_PLLM_DIV_3, 20, LL_RCC_PLLR_DIV_2);
+#elif HSE_VALUE == 16000000
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSE, LL_RCC_PLLM_DIV_2, 20, LL_RCC_PLLR_DIV_2);
+#elif HSE_VALUE == 8000000
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSE, LL_RCC_PLLM_DIV_1, 20, LL_RCC_PLLR_DIV_2);
+#else
+#error "Unsupported HSE_VALUE"
+#endif
+
+#elif defined(USE_LSE)
+  /*
+    using low speed external oscillator to trim MSI clock
+   */
   LL_RCC_MSI_Enable();
+  LL_RCC_LSI_Enable();
 
-   /* Wait till MSI is ready */
-  while(LL_RCC_MSI_IsReady() != 1)
-  {
+  /* Wait till MSI and LSI are ready */
+  while (LL_RCC_LSI_IsReady() != 1) ;
+  while (LL_RCC_MSI_IsReady() != 1) ;
+  while (LL_PWR_IsActiveFlag_VOS() != 0) ;
 
-  }
+  LL_RCC_MSI_DisablePLLMode();
+  LL_RCC_LSE_Enable();
+  LL_RCC_LSE_EnableBypass();
+  LL_RCC_LSE_SetDriveCapability(LL_RCC_LSEDRIVE_HIGH);
+
+  while (LL_RCC_LSE_IsReady() != 1) ;
+  LL_RCC_MSI_EnablePLLMode();
+
+  LL_RCC_SetRTCClockSource(LL_RCC_RTC_CLKSOURCE_LSE);
+  LL_RCC_EnableRTC();
+
   LL_RCC_MSI_EnableRangeSelection();
   LL_RCC_MSI_SetRange(LL_RCC_MSIRANGE_6);
   LL_RCC_MSI_SetCalibTrimming(0);
   LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_MSI, LL_RCC_PLLM_DIV_1, 40, LL_RCC_PLLR_DIV_2);
+
+#elif defined(USE_MSI)
+  /*
+    using medium speed internal oscillator
+   */
+  LL_RCC_MSI_Enable();
+  while(LL_RCC_MSI_IsReady() != 1) ;
+  LL_RCC_MSI_EnableRangeSelection();
+  LL_RCC_MSI_SetRange(LL_RCC_MSIRANGE_6);
+  LL_RCC_MSI_SetCalibTrimming(0);
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_MSI, LL_RCC_PLLM_DIV_1, 40, LL_RCC_PLLR_DIV_2);
+#else
+  /*  default to using HSI16, which is best option for no external
+      oscillator
+   */
+  LL_RCC_HSI_Enable();
+
+  /* Wait till HSI is ready */
+  while (LL_RCC_HSI_IsReady() != 1) ;
+
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSI, LL_RCC_PLLM_DIV_2, 20, LL_RCC_PLLR_DIV_2);
+#endif
+
   LL_RCC_PLL_EnableDomain_SYS();
   LL_RCC_PLL_Enable();
 
@@ -229,7 +284,7 @@ void MX_TIM1_Init(void)
 
     TIM_InitStruct.Prescaler = 0;
     TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
-    TIM_InitStruct.Autoreload = 3334;
+    TIM_InitStruct.Autoreload = TIM1_AUTORELOAD;
     TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
     TIM_InitStruct.RepetitionCounter = 0;
     LL_TIM_Init(TIM1, &TIM_InitStruct);
@@ -623,32 +678,7 @@ void reloadWatchDogCounter()
     LL_IWDG_ReloadCounter(IWDG);
 }
 
-void disableComTimerInt() { COM_TIMER->DIER &= ~((0x1UL << (0U))); }
-
-void enableComTimerInt() { COM_TIMER->DIER |= (0x1UL << (0U)); }
-
-void setAndEnableComInt(uint16_t time)
-{
-    COM_TIMER->CNT = 0;
-    COM_TIMER->ARR = time;
-    COM_TIMER->SR = 0x00;
-    COM_TIMER->DIER |= (0x1UL << (0U));
-}
-
-uint16_t getintervaTimerCount() { return INTERVAL_TIMER->CNT; }
-
 void setintervaTimerCount(uint16_t intertime) { INTERVAL_TIMER->CNT = 0; }
-
-void setPrescalerPWM(uint16_t presc) { TIM1->PSC = presc; }
-
-void setAutoReloadPWM(uint16_t relval) { TIM1->ARR = relval; }
-
-void setDutyCycleAll(uint16_t newdc)
-{
-    TIM1->CCR1 = newdc;
-    TIM1->CCR2 = newdc;
-    TIM1->CCR3 = newdc;
-}
 
 inline void setPWMCompare1(uint16_t compareone) { TIM1->CCR1 = compareone; }
 inline void setPWMCompare2(uint16_t comparetwo) { TIM1->CCR2 = comparetwo; }

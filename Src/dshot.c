@@ -11,6 +11,9 @@
 #include "functions.h"
 #include "sounds.h"
 #include "targets.h"
+#if DRONECAN_SUPPORT
+#include "DroneCAN/DroneCAN.h"
+#endif
 
 int dpulse[16] = { 0 };
 
@@ -28,6 +31,7 @@ extern char send_telemetry;
 extern uint8_t max_duty_cycle_change;
 int dshot_full_number;
 extern char play_tone_flag;
+extern char send_esc_info_flag;
 uint8_t command_count = 0;
 uint8_t last_command = 0;
 uint8_t high_pin_count = 0;
@@ -39,6 +43,10 @@ char dshot_extended_telemetry = 0;
 uint16_t send_extended_dshot = 0;
 uint16_t processtime = 0;
 uint16_t halfpulsetime = 0;
+
+uint8_t programming_mode;
+uint16_t position;
+uint8_t  new_byte;
 
 void computeDshotDMA()
 {
@@ -78,6 +86,25 @@ void computeDshotDMA()
             if (dpulse[11] == 1) {
                 send_telemetry = 1;
             }
+            if(programming_mode > 0){  
+                if(programming_mode == 1){ // begin programming mode
+                    position = tocheck;    // eepromBuffer position
+                    programming_mode = 2;
+                    return;
+                }
+               if(programming_mode == 2){
+                    new_byte = tocheck;   // new value of setting
+                    programming_mode = 3;
+                    return;
+                }
+                if(programming_mode == 3){
+                    if(tocheck == 37){  // commit new values to eeprom. must use save settings to make permanent.
+                    eepromBuffer.buffer[position] = new_byte;
+                    programming_mode = 0;
+                  }
+                }
+                return; // don't process dshot signal when in programming mode
+            }
             if (tocheck > 47) {
                 if (EDT_ARMED) {
                     newinput = tocheck;
@@ -95,6 +122,12 @@ void computeDshotDMA()
                 if (EDT_ARM_ENABLE == 1) {
                     EDT_ARMED = 0;
                 }
+#if DRONECAN_SUPPORT
+                if (DroneCAN_active()) {
+                    // allow DroneCAN to override DShot input
+                    return;
+                }
+#endif
                 newinput = 0;
                 dshotcommand = 0;
                 command_count = 0;
@@ -128,25 +161,28 @@ void computeDshotDMA()
                     case 5:
                         play_tone_flag = 5;
                         break;
+                    case 6:
+                        send_esc_info_flag = 1;
+                        break;
                     case 7:
-                        dir_reversed = 0;
-                        forward = 1 - dir_reversed;
+                        eepromBuffer.dir_reversed = 0;
+                        forward = 1 - eepromBuffer.dir_reversed;
                         //	play_tone_flag = 1;
                         break;
                     case 8:
-                        dir_reversed = 1;
-                        forward = 1 - dir_reversed;
+                        eepromBuffer.dir_reversed = 1;
+                        forward = 1 - eepromBuffer.dir_reversed;
                         //	play_tone_flag = 2;
                         break;
                     case 9:
-                        bi_direction = 0;
+                        eepromBuffer.bi_direction = 0;
                         break;
                     case 10:
-                        bi_direction = 1;
+                        eepromBuffer.bi_direction = 1;
                         break;
                     case 12:
                         saveEEpromSettings();
-                        play_tone_flag = 1 + dir_reversed;
+                        play_tone_flag = 1 + eepromBuffer.dir_reversed;
                         //	NVIC_SystemReset();
                         break;
                     case 13:
@@ -162,10 +198,14 @@ void computeDshotDMA()
                         //	make_dshot_package();
                         break;
                     case 20:
-                        forward = 1 - dir_reversed;
+                        forward = 1 - eepromBuffer.dir_reversed;
                         break;
                     case 21:
-                        forward = dir_reversed;
+                        forward = eepromBuffer.dir_reversed;
+                        break;
+                    case 36:
+                        programming_mode = 1;
+              //          armed = 0;           // disarm when entering programming mode
                         break;
                     }
                     last_dshot_command = dshotcommand;
@@ -174,6 +214,7 @@ void computeDshotDMA()
             }
         } else {
             dshot_badcounts++;
+            programming_mode = 0;
         }
     }
 }
@@ -225,7 +266,7 @@ void make_dshot_package(uint16_t com_time)
             << 5 // 3rd set of four digits
         | gcr_encode_table[(((1 << 4) - 1) & (dshot_full_number >> 0))]; // last four digits
 // GCR RLL encode 20 to 21bit output
-#if defined(MCU_F051) || defined(MCU_F031)
+#if defined(MCU_F051) || defined(MCU_F031) || defined(MCU_CH32V203)
     gcr[1 + buffer_padding] = 64;
     for (int i = 19; i >= 0; i--) { // each digit in gcrnumber
         gcr[buffer_padding + 20 - i + 1] = ((((gcrnumber & 1 << i)) >> i) ^ (gcr[buffer_padding + 20 - i] >> 6))

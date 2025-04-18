@@ -29,6 +29,9 @@
 #include "IO.h"
 #include "WS2812.h"
 #include "targets.h"
+#include "comparator.h"
+#include "common.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef
@@ -78,13 +81,12 @@ extern void tenKhzRoutine();
 extern void processDshot();
 
 extern char send_telemetry;
-int interrupt_time = 0;
+uint16_t interrupt_time = 0;
 extern char servoPwm;
 extern char dshot_telemetry;
 extern char armed;
 extern char out_put;
 extern uint8_t compute_dshot_flag;
-extern uint32_t commutation_interval;
 
 /* USER CODE END EV */
 
@@ -234,35 +236,56 @@ void DMA1_Channel2_3_IRQHandler(void)
  */
 void ADC1_COMP_IRQHandler(void)
 {
-    if (LL_EXTI_IsActiveFallingFlag_0_31(LL_EXTI_LINE_18)) {
-        LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_18);
-				if((INTERVAL_TIMER->CNT) > (commutation_interval >> 1)){
-       interruptRoutine();
+  if (LL_EXTI_IsActiveFallingFlag_0_31(LL_EXTI_LINE_18)) {
+    if((INTERVAL_TIMER->CNT) > (average_interval >> 1)){
+      LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_18);
+      interruptRoutine();
+    }else{
+      if(getCompOutputLevel() == rising){
+          LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_18);
+          return;
+      }
     }
-        return;
-    }
+    return;
+  }
 
-    if (LL_EXTI_IsActiveRisingFlag_0_31(LL_EXTI_LINE_18)) {
-        LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_18);
-				if((INTERVAL_TIMER->CNT) > (commutation_interval >> 1)){
-       interruptRoutine();
+  if (LL_EXTI_IsActiveRisingFlag_0_31(LL_EXTI_LINE_18)) {
+    if((INTERVAL_TIMER->CNT) > (average_interval >> 1)){
+      LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_18);
+      interruptRoutine();
+    }else{
+      if(getCompOutputLevel() == rising){
+          LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_18);
+          return;
+      }
     }
-        return;
+    return;
+  }
+  if (LL_EXTI_IsActiveFallingFlag_0_31(LL_EXTI_LINE_17)) {
+    if((INTERVAL_TIMER->CNT) > (average_interval >> 1)){
+      LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_17);
+      interruptRoutine();
+    }else{
+      if(getCompOutputLevel() == rising){
+          LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_17);
+          return;
+      }
     }
-    if (LL_EXTI_IsActiveFallingFlag_0_31(LL_EXTI_LINE_17)) {
-        LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_17);
-				if((INTERVAL_TIMER->CNT) > (commutation_interval >> 1)){
-       interruptRoutine();
+    return;
+  }
+
+  if (LL_EXTI_IsActiveRisingFlag_0_31(LL_EXTI_LINE_17)) {
+    if((INTERVAL_TIMER->CNT) > (average_interval >> 1)){
+      LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_17);
+      interruptRoutine();
+    }else{
+      if(getCompOutputLevel() == rising){
+          LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_17);
+          return;
+      }
     }
-        return;
-    }
-    if (LL_EXTI_IsActiveRisingFlag_0_31(LL_EXTI_LINE_17)) {
-        LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_17);
-				if((INTERVAL_TIMER->CNT) > (commutation_interval >> 1)){
-       interruptRoutine();
-    }
-        return;
-    }
+    return;
+  }
 }
 
 /**
@@ -324,7 +347,7 @@ void TIM14_IRQHandler(void)
     interrupt_time = UTILITY_TIMER->CNT;
     PeriodElapsedCallback();
     LL_TIM_ClearFlag_UPDATE(TIM14);
-    interrupt_time = UTILITY_TIMER->CNT - interrupt_time;
+    interrupt_time = ((uint16_t)UTILITY_TIMER->CNT) - interrupt_time;
 }
 
 /* USER CODE BEGIN 1 */
