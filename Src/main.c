@@ -930,7 +930,7 @@ void interruptRoutine()
 
     // ADD 5% to match the reality
     // TODO Make it nicer and understand the error
-    thiszctime = 105*INTERVAL_TIMER_COUNT/100;  
+    thiszctime = TIMER_CORRECTION_PERCENT*INTERVAL_TIMER_COUNT/100;  
     SET_INTERVAL_TIMER_COUNT(0);
     SET_AND_ENABLE_COM_INT(waitTime+1); // enable COM_TIMER interrupt
     __enable_irq();
@@ -1539,7 +1539,7 @@ void zcfoundroutine()
     thiszctime = INTERVAL_TIMER_COUNT;
     SET_INTERVAL_TIMER_COUNT(0);
     // CORRECTION TIMER BIAS
-    commutation_interval = ((105*thiszctime)/100 + (3 * commutation_interval)) >> 2;
+    commutation_interval = ((TIMER_CORRECTION_PERCENT*thiszctime)/100 + (3 * commutation_interval)) >> 2;
     advance = (commutation_interval >> 3) * 2; //   7.5 degree increments
     waitTime = (commutation_interval >> 1) - advance;
 //			if(thiszctime < (commutation_interval - (commutation_interval>>2))){

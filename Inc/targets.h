@@ -2454,6 +2454,7 @@
 #define RAMP_SPEED_HIGH_RPM 16
 #endif
 
+
 /************************************ F051 Hardware Groups
  * ****************************/
 
@@ -4359,6 +4360,7 @@
 #endif
 #define DSHOT_PRIORITY_THRESHOLD 50
 #define COM_TIMER_IRQ TMR16_GLOBAL_IRQn
+#define TIMER_CORRECTION_PERCENT 100
 #endif
 
 #ifdef MCU_AT415
@@ -4379,6 +4381,7 @@
 // #define DSHOT_PRE            95
 #define DSHOT_PRIORITY_THRESHOLD 50
 #define COM_TIMER_IRQ TMR1_TRG_HALL_TMR11_IRQn
+#define TIMER_CORRECTION_PERCENT 105
 #endif
 
 #ifdef MCU_L431
@@ -4462,4 +4465,7 @@
 #define TIM1_AUTORELOAD    ((uint16_t)(CPU_FREQUENCY_MHZ * 1000U * 1000U / NOMINAL_PWM)-1)
 #endif
 
+#ifndef TIMER_CORRECTION_PERCENT
+#define TIMER_CORRECTION_PERCENT 100
+#endif
 
