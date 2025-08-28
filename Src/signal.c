@@ -168,8 +168,8 @@ void transfercomplete()
                 average_count++;
                 average_packet_length = average_packet_length + (dma_buffer[31] - dma_buffer[0]);
                 if (average_count == 8) {
-                    dshot_frametime_high = (average_packet_length >> 3) + (average_packet_length >> 7);
-                    dshot_frametime_low = (average_packet_length >> 3) - (average_packet_length >> 7);
+                    dshot_frametime_high = (average_packet_length >> 3) + (average_packet_length >> 6);
+                    dshot_frametime_low = (average_packet_length >> 3) - (average_packet_length >> 6);
                 }
             }
             if (adjusted_input == 0 && calibration_required == 0) { // note this in input..not newinput so it

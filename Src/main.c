@@ -605,7 +605,10 @@ int32_t doPidCalculations2(struct fastPID *pidnow, int actual, int target){
     // pidnow->pid_output = ((int32_t)(pidnow->error*pidnow->Kp))/(int32_t)100
     //                     + (int32_t)(pidnow->Ki * pidnow->integral) / (int32_t)10000
     //                     + ((int32_t)(pidnow->Kd*pidnow->derivative));
-	pidnow->pid_output = (int32_t)pidnow->error * (int32_t)pidnow->Kp
+	// pidnow->pid_output = (int32_t)pidnow->error * (int32_t)pidnow->Kp
+    //                      + (int32_t)pidnow->Ki * (int32_t)pidnow->integral / 100
+	//                      + (int32_t)pidnow->Kd * (int32_t)pidnow->derivative;
+    pidnow->pid_output = (int32_t)pidnow->error * (int32_t)pidnow->Kp
                          + (int32_t)pidnow->Ki * (int32_t)pidnow->integral / 100
 	                     + (int32_t)pidnow->Kd * (int32_t)pidnow->derivative;
 
@@ -813,10 +816,10 @@ void loadEEpromSettings()
         MINIMUM_RPM_SPEED_CONTROL=eepromBuffer.rpm.rpm_min*200;
         MAXIMUM_RPM_SPEED_CONTROL=eepromBuffer.rpm.rpm_max*200;
         
-        speedPid.Kp = 10 * eepromBuffer.rpm.kp;
-        speedPid.Ki = 1 * eepromBuffer.rpm.ki;
-        speedPid.Kd = 1000 * eepromBuffer.rpm.kd;
-        speedPid.integral_limit = eepromBuffer.rpm.integral_limit*1000000;
+        speedPid.Kp = (eepromBuffer.rpm.kp_high << 8) + eepromBuffer.rpm.kp_low;
+        speedPid.Ki = (eepromBuffer.rpm.ki_high << 8) + eepromBuffer.rpm.ki_low;
+        speedPid.Kd = (eepromBuffer.rpm.kd_high << 8) + eepromBuffer.rpm.kd_low;
+        speedPid.integral_limit = ((eepromBuffer.rpm.integral_limit_high<<8) + eepromBuffer.rpm.integral_limit_low)*1000;
     }}
 
 void saveEEpromSettings()

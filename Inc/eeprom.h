@@ -71,11 +71,15 @@ typedef union EEprom_u {
             uint8_t drive_by_rpm; // 192
             uint8_t rpm_min; // 193
             uint8_t rpm_max; // 194
-            uint8_t kp; // 195
-            uint8_t ki; // 196
-            uint8_t kd; // 197
-            uint8_t integral_limit; // 198
-            uint8_t reserved[9];
+            uint8_t kp_high; // 195
+            uint8_t kp_low; // 196
+            uint8_t ki_high; // 197
+            uint8_t ki_low; // 198
+            uint8_t kd_high; // 199
+            uint8_t kd_low; // 200
+            uint8_t integral_limit_high; // 201
+            uint8_t integral_limit_low; // 202
+            uint8_t reserved[5]; // 203-207
         } rpm;
     };
     uint8_t buffer[208];
