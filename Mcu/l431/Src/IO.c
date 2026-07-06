@@ -15,7 +15,7 @@
 
 char ic_timer_prescaler = (CPU_FREQUENCY_MHZ / 4);
 uint32_t dma_buffer[64] = { 0 };
-char out_put = 0;
+volatile char out_put = 0;
 uint8_t buffer_padding = 0;
 
 void receiveDshotDma()
@@ -68,7 +68,7 @@ void sendDshotDma()
     IC_TIMER_REGISTER->CCMR1 = 0x60;
     IC_TIMER_REGISTER->CCER = 0x3;
     IC_TIMER_REGISTER->PSC = output_timer_prescaler;
-    IC_TIMER_REGISTER->ARR = 115;
+    IC_TIMER_REGISTER->ARR = 110;
 
     IC_TIMER_REGISTER->EGR |= TIM_EGR_UG;
 #ifdef USE_TIMER_3_CHANNEL_1

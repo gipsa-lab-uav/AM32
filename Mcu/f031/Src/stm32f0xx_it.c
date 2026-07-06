@@ -34,7 +34,7 @@ extern void transfercomplete(void);
 extern void interruptRoutine();
 extern void PeriodElapsedCallback();
 extern void tenKhzRoutine();
-extern char servoPwm;
+extern volatile char servoPwm;
 
 int update_interupt = 0;
 uint8_t update_count = 0;
@@ -286,7 +286,7 @@ void DMA1_Channel1_IRQHandler(void)
        LL_DMA_ClearFlag_GI1(DMA1);
        LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
        transfercomplete();
-       // input_ready = 1;
+        input_ready = 1;
     } else if (LL_DMA_IsActiveFlag_TE1(DMA1) == 1) {
         LL_DMA_ClearFlag_GI1(DMA1);
     }

@@ -234,8 +234,10 @@ an settings option)
 #include <string.h>
 #include <assert.h>
 
+#ifndef NXP
 #ifdef USE_LED_STRIP
 #include "WS2812.h"
+#endif
 #endif
 
 #ifdef USE_CRSF_INPUT
@@ -303,6 +305,7 @@ fastPID stallPid = { // 1khz loop time
 };
 
 EEprom_t eepromBuffer;
+volatile uint32_t polling_mode_changeover;
 volatile uint8_t ramp_divider;
 volatile uint8_t max_ramp_startup = RAMP_SPEED_STARTUP;
 volatile uint8_t max_ramp_low_rpm = RAMP_SPEED_LOW_RPM;
@@ -311,12 +314,13 @@ char send_esc_info_flag;
 uint32_t eeprom_address = EEPROM_START_ADD; 
 uint16_t prop_brake_duty_cycle = 0;
 uint16_t ledcounter = 0;
+uint16_t ramp_count;
 uint32_t process_time = 0;
 uint32_t start_process = 0;
 uint16_t one_khz_loop_counter = 0;
 uint16_t target_e_com_time_high;
 uint16_t target_e_com_time_low;
-uint8_t compute_dshot_flag = 0;
+volatile uint8_t compute_dshot_flag = 0;
 uint8_t crsf_input_channel = 1;
 uint8_t crsf_output_PWM_channel = 2;
 uint8_t telemetry_interval_ms = 30;
@@ -356,20 +360,23 @@ int32_t input_override = 0;
 int16_t use_current_limit_adjust = 2000;
 char use_current_limit = 0;
 int32_t stall_protection_adjust = 0;
-
 uint32_t MCU_Id = 0;
 uint32_t REV_Id = 0;
 
 uint16_t armed_timeout_count;
 uint16_t reverse_speed_threshold = 1500;
+#if DRONECAN_SUPPORT
+uint32_t desync_happened = 0;
+#else
 uint8_t desync_happened = 0;
+#endif
 char maximum_throttle_change_ramp = 1;
 
 char crawler_mode = 0; // no longer used //
 uint16_t velocity_count = 0;
 uint16_t velocity_count_threshold = 75;
 
-char low_rpm_throttle_limit = 1;
+char low_rpm_throttle_limit = 0;
 
 uint16_t low_voltage_count = 0;
 uint16_t telem_ms_count;
@@ -421,24 +428,29 @@ uint16_t throttle_max_at_low_rpm = 400;
 uint16_t throttle_max_at_high_rpm = 2000;
 
 uint16_t commutation_intervals[6] = { 0 };
-uint32_t average_interval = 0;
+volatile uint32_t average_interval = 0;
 uint32_t last_average_interval;
 int e_com_time;
 
 uint16_t ADC_smoothed_input = 0;
-uint8_t degrees_celsius;
+volatile int16_t degrees_celsius;
 int16_t converted_degrees;
 uint8_t temperature_offset;
+#ifdef NXP	// raw temperature uses two 16-bit values
+uint16_t ADC_raw_temp[2] = {0};
+#else
 uint16_t ADC_raw_temp;
+#endif
 uint16_t ADC_raw_volts;
 uint16_t ADC_raw_current;
 uint16_t ADC_raw_input;
+uint16_t ADC_raw_ntc;
 uint8_t PROCESS_ADC_FLAG = 0;
-char send_telemetry = 0;
+volatile char send_telemetry = 0;
 char telemetry_done = 0;
 char prop_brake_active = 0;
 
-char dshot_telemetry = 0;
+volatile char dshot_telemetry = 0;
 
 uint8_t last_dshot_command = 0;
 char old_routine = 1;
@@ -459,7 +471,7 @@ uint8_t filter_level = 5;
 uint8_t running = 0;
 uint16_t advance = 0;
 uint8_t advancedivisor = 6;
-char rising = 1;
+volatile char rising = 1;
 
 ////Space Vector PWM ////////////////
 // const int pwmSin[] ={128, 132, 136, 140, 143, 147, 151, 155, 159, 162, 166,
@@ -532,33 +544,33 @@ uint8_t bad_count_threshold = CPU_FREQUENCY_MHZ / 24;
 uint8_t dshotcommand;
 uint16_t armed_count_threshold = 1000;
 
-char armed = 0;
+volatile char armed = 0;
 uint16_t zero_input_count = 0;
 
 uint16_t input = 0;
-uint16_t newinput = 0;
-char inputSet = 0;
+volatile uint16_t newinput = 0;
+volatile char inputSet = 0;
 char dshot = 0;
-char servoPwm = 0;
-uint32_t zero_crosses;
+volatile char servoPwm = 0;
+volatile uint32_t zero_crosses;
 
-uint8_t zcfound = 0;
+volatile uint8_t zcfound = 0;
 
-uint8_t bemfcounter;
+volatile uint8_t bemfcounter;
 uint8_t min_bemf_counts_up = TARGET_MIN_BEMF_COUNTS;
 uint8_t min_bemf_counts_down = TARGET_MIN_BEMF_COUNTS;
 
-uint16_t lastzctime;
-uint16_t thiszctime;
+volatile uint16_t lastzctime;
+volatile uint16_t thiszctime;
 
-uint16_t duty_cycle = 0;
+volatile uint16_t duty_cycle = 0;
 char step = 1;
-uint32_t commutation_interval = 12500;
-uint16_t waitTime = 0;
+volatile uint32_t commutation_interval = 12500;
+volatile uint16_t waitTime = 0;
 uint16_t signaltimeout = 0;
 uint8_t ubAnalogWatchdogStatus = RESET;
 
-#ifdef NEED_INPUT_READY
+#if defined(NEED_INPUT_READY) || defined(NXP)
 volatile char input_ready = 0;
 #endif
 
@@ -644,26 +656,19 @@ void loadEEpromSettings()
     }
     if (eepromBuffer.advance_level < 4) {         // old format needs to be converted to 0-32 range
         temp_advance = (eepromBuffer.advance_level<<3);
+        eepromBuffer.advance_level = temp_advance + 10;
     }
     if (eepromBuffer.advance_level < 43 && eepromBuffer.advance_level > 9 ) { // new format subtract 10 from advance
         temp_advance = eepromBuffer.advance_level - 10;
     }
 
     if (eepromBuffer.pwm_frequency < 145 && eepromBuffer.pwm_frequency > 7) {
-        if (eepromBuffer.pwm_frequency < 145 && eepromBuffer.pwm_frequency > 23) {
-            TIMER1_MAX_ARR = map(eepromBuffer.pwm_frequency, 24, 144, TIM1_AUTORELOAD, TIM1_AUTORELOAD / 6);
-        }
-        if (eepromBuffer.pwm_frequency < 24 && eepromBuffer.pwm_frequency > 11) {
-            TIMER1_MAX_ARR = map(eepromBuffer.pwm_frequency, 12, 24, TIM1_AUTORELOAD * 2, TIM1_AUTORELOAD);
-        }
-        if (eepromBuffer.pwm_frequency < 12 && eepromBuffer.pwm_frequency > 7) {
-            TIMER1_MAX_ARR = map(eepromBuffer.pwm_frequency, 7, 16, TIM1_AUTORELOAD * 3,
-                TIM1_AUTORELOAD / 2 * 3);
-        }
-        SET_AUTO_RELOAD_PWM(TIMER1_MAX_ARR);
+      int divider = eepromBuffer.pwm_frequency * 100 / 6;
+      TIMER1_MAX_ARR =   TIM1_AUTORELOAD * 400 / divider;
+      SET_AUTO_RELOAD_PWM(TIMER1_MAX_ARR);
     } else {
-        tim1_arr = TIM1_AUTORELOAD;
-        SET_AUTO_RELOAD_PWM(tim1_arr);
+      tim1_arr = TIM1_AUTORELOAD;
+      SET_AUTO_RELOAD_PWM(tim1_arr);
     }
     if(eepromBuffer.minimum_duty_cycle < 51 && eepromBuffer.minimum_duty_cycle > 0){
     minimum_duty_cycle = eepromBuffer.minimum_duty_cycle * 10;
@@ -680,6 +685,9 @@ void loadEEpromSettings()
     motor_kv = (eepromBuffer.motor_kv * 40) + 20;
 #ifdef THREE_CELL_MAX
 		motor_kv =  motor_kv / 2;
+#endif
+#ifdef ONE_TWO_CELL_MAX
+		motor_kv =  motor_kv / 16;
 #endif
     setVolume(2);
     if (eepromBuffer.eeprom_version > 0) { // these commands weren't introduced until eeprom version 1.
@@ -733,6 +741,12 @@ void loadEEpromSettings()
 #ifdef GIGADEVICES
         TIMER_CCHP(TIMER0) |= dead_time_override;
 #endif
+#ifdef NXP
+    	for (int submodule = 0; submodule <= 2; submodule++) {
+    		FLEXPWM0->SM[submodule].DTCNT0 = PWM_DTCNT0_DTCNT0(dead_time_override);	//PWMA deadtime
+    		FLEXPWM0->SM[submodule].DTCNT1 = PWM_DTCNT1_DTCNT1(dead_time_override);	//PWMB deadtime
+    	}
+#endif
 #ifdef WCH
             TIM1->BDTR |= dead_time_override;
 #endif
@@ -741,7 +755,7 @@ void loadEEpromSettings()
             eepromBuffer.limits.temperature = 255;
         }
 
-        if (eepromBuffer.limits.current > 0 && eepromBuffer.limits.current < 100) {
+        if (eepromBuffer.limits.current > 0 && eepromBuffer.limits.current <= 100) {
             use_current_limit = 1;
         }
         
@@ -783,12 +797,12 @@ void loadEEpromSettings()
         }
         
         if(eepromBuffer.max_ramp < 10){
-          ramp_divider = 10;
+          ramp_divider = 9;
           max_ramp_startup = eepromBuffer.max_ramp;
           max_ramp_low_rpm = eepromBuffer.max_ramp;
           max_ramp_high_rpm = eepromBuffer.max_ramp;
         }else{
-          ramp_divider = 1;
+          ramp_divider = 0;
           if((eepromBuffer.max_ramp / 10) < max_ramp_startup){
             max_ramp_startup = eepromBuffer.max_ramp / 10;
           }
@@ -807,6 +821,12 @@ void loadEEpromSettings()
         high_rpm_level = motor_kv / 12 / (32 / eepromBuffer.motor_poles);				
     }
     reverse_speed_threshold = map(motor_kv, 300, 3000, 1000, 500);
+
+    if (eepromBuffer.bi_direction){
+      polling_mode_changeover = POLLING_MODE_THRESHOLD / 2;
+    }else{
+      polling_mode_changeover = POLLING_MODE_THRESHOLD;
+    }
 
     if(eepromBuffer.rpm.drive_by_rpm==0)
     {
@@ -854,6 +874,7 @@ void getBemfState()
         current_state = PHASE_B_EXTI_PORT->IDR & PHASE_B_EXTI_PIN;
     }
 #else
+    //Get current comparator output level
     current_state = !getCompOutputLevel(); // polarity reversed
 #endif
     if (rising) {
@@ -904,7 +925,7 @@ void commutate()
     __enable_irq();
     changeCompInput();
 #ifndef NO_POLLING_START
-	if (average_interval > 2500) {
+	if (average_interval > polling_mode_changeover + 500) {
       old_routine = 1;
    }
 #endif
@@ -913,14 +934,18 @@ void commutate()
     commutation_intervals[step - 1] = commutation_interval; // just used to calulate average
     
 #ifdef USE_PULSE_OUT
-		if(rising){
-			GPIOB->scr = GPIO_PINS_8;
-		}else{
-			GPIOB->clr = GPIO_PINS_8;
-		}
+	if(step == 1 || step == 4  ){
+    WRITE_REG(RPM_PULSE_PORT->ODR, READ_REG(RPM_PULSE_PORT->ODR) ^ RPM_PULSE_PIN);
+	}
 #endif
 }
 
+/*
+ * @brief 	Called by the COM_TIMER interrupt handler after the set wait time
+ * 			This computes how much to advance in a commutation step.
+ * 			This disables the COM_TIMER interrupt.
+ * 			Then it enables the comparator to generate its interrupt.
+ */
 void PeriodElapsedCallback()
 {
     DISABLE_COM_TIMER_INT(); // disable interrupt
@@ -940,6 +965,11 @@ void PeriodElapsedCallback()
     }
 }
 
+/*
+ * @brief 	Called by the comparator interrupt handler.
+ * 			Disables the comparator interrupt.
+ * 			Enables the COM_TIMER and sets it to generate an interrupt after the wait time.
+ */
 void interruptRoutine()
 {
 //   if (average_interval > 125) {
@@ -1065,8 +1095,46 @@ void setInput()
                 }
             }
         }
-
         if (dshot) {
+                     if (eepromBuffer.rc_car_reverse) {
+                         if (newinput > 1047) {
+                         if (forward == eepromBuffer.dir_reversed) {
+                         adjusted_input = 0;
+                         prop_brake_active = 1;
+                         if (return_to_center) {
+                             forward = 1 - eepromBuffer.dir_reversed;
+                             prop_brake_active = 0;
+                             return_to_center = 0;
+                         }
+                     }
+                     if (prop_brake_active == 0) {
+                         return_to_center = 0;
+                         adjusted_input = ((newinput - 1048) * 2 + 47) - reversing_dead_band;
+                     }
+                     }
+                     if (newinput <= 1047 && newinput > 47) {
+                     if (forward == (1 - eepromBuffer.dir_reversed)) {
+                         adjusted_input = 0;
+                         prop_brake_active = 1;
+                         if (return_to_center) {
+                             forward = eepromBuffer.dir_reversed;
+                             prop_brake_active = 0;
+                             return_to_center = 0;
+                         }
+                     }
+                     if (prop_brake_active == 0) {
+                         return_to_center = 0;
+                         adjusted_input = ((newinput - 48) * 2 + 47) - reversing_dead_band;
+                     }
+                     }
+                     if (newinput < 48) {
+                     adjusted_input = 0;
+                     if (prop_brake_active) {
+                         prop_brake_active = 0;
+                         return_to_center = 1;
+                     }
+                 }
+                         } else {
             if (newinput > 1047) {
 
                 if (forward == eepromBuffer.dir_reversed) {
@@ -1076,7 +1144,7 @@ void setInput()
                         old_routine = 1;
                         maskPhaseInterrupts();
                         brushed_direction_set = 0;
-                    } else {
+                     } else {
                         newinput = 0;
                     }
                 }
@@ -1090,7 +1158,7 @@ void setInput()
                         forward = eepromBuffer.dir_reversed;
                         maskPhaseInterrupts();
                         brushed_direction_set = 0;
-                    } else {
+                     } else {
                         newinput = 0;
                     }
                 }
@@ -1099,6 +1167,7 @@ void setInput()
             if (newinput < 48) {
                 adjusted_input = 0;
                 brushed_direction_set = 0;
+                }
             }
         }
     } else {
@@ -1111,9 +1180,7 @@ void setInput()
         input = 0;
         bemf_timeout_happened = 102;
 #ifdef USE_RGB_LED
-        GPIOB->BRR = LL_GPIO_PIN_8; // on red
-        GPIOB->BSRR = LL_GPIO_PIN_5; //
-        GPIOB->BSRR = LL_GPIO_PIN_3;
+        setIndividualRGBLed(1, 0, 0);
 #endif
     } else {
 #ifdef FIXED_DUTY_MODE
@@ -1229,8 +1296,14 @@ if (!stepper_sine && armed) {
                 }
                 if (eepromBuffer.rc_car_reverse && prop_brake_active) {
 #ifndef PWM_ENABLE_BRIDGE
-                    prop_brake_duty_cycle = (getAbsDif(1000, newinput) + 1000);
+
+                  if (dshot == 0) prop_brake_duty_cycle = (getAbsDif(1000, newinput) + 1000);
+                    if (dshot)  {
+                        if (newinput <= 1047 && newinput > 47) prop_brake_duty_cycle = ((newinput - 48) * 2 + 47) - reversing_dead_band;
+                        if (newinput > 1047) prop_brake_duty_cycle = ((newinput - 1048) * 2 + 47) - reversing_dead_band;
+                    }
                     if (prop_brake_duty_cycle >= (1999)) {
+
                         fullBrake();
                     } else {
                         proportionalBrake();
@@ -1317,6 +1390,7 @@ void tenKhzRoutine()
     duty_cycle = duty_cycle_setpoint;
     tenkhzcounter++;
     ledcounter++;
+    ramp_count++;
     one_khz_loop_counter++;
     if (!armed) {
         if (cell_count == 0) {
@@ -1332,9 +1406,7 @@ void tenKhzRoutine()
                             send_LED_RGB(0, 255, 0);
 #endif
 #ifdef USE_RGB_LED
-                            GPIOB->BRR = LL_GPIO_PIN_3; // turn on green
-                            GPIOB->BSRR = LL_GPIO_PIN_8; // turn on green
-                            GPIOB->BSRR = LL_GPIO_PIN_5;
+                            setIndividualRGBLed(0,1,0);
 #endif
                             if ((cell_count == 0) && eepromBuffer.low_voltage_cut_off == 1) {
                                 cell_count = battery_voltage / 370;
@@ -1350,7 +1422,7 @@ void tenKhzRoutine()
 															playInputTune();
 #endif
                             }
-                            if (!servoPwm) {
+                            if (!servoPwm && !dshot) {
                                 eepromBuffer.rc_car_reverse = 0;
                             }
                         } else {
@@ -1442,7 +1514,8 @@ void tenKhzRoutine()
                 }							
             }
         }
-        if (tenkhzcounter % ramp_divider == 0) {
+        if (ramp_count > ramp_divider) {
+          ramp_count = 0;
 #ifdef VOLTAGE_BASED_RAMP
             uint16_t voltage_based_max_change = map(battery_voltage, 800, 2200, 10, 1);
             if (average_interval > 200) {
@@ -1521,7 +1594,11 @@ void processDshot()
         compute_dshot_flag = 0;
     }
     if (compute_dshot_flag == 2) {
+      if(e_com_time > 65535){    // beyond dshot range
+        make_dshot_package(65535);
+      }else{
         make_dshot_package(e_com_time);
+      }
         compute_dshot_flag = 0;
         return;
     }
@@ -1595,6 +1672,11 @@ void zcfoundroutine()
 #ifdef MCU_AT32
 		COM_TIMER->pr = waitTime;
 #endif
+#ifdef NXP
+//	COM_TIMER->MSR[0] = waitTime;
+	COM_TIMER->MR[0] = waitTime;
+#endif
+
     commutate();
     bemfcounter = 0;
     bad_count = 0;
@@ -1612,7 +1694,7 @@ void zcfoundroutine()
             enableCompInterrupts(); // enable interrupt
         }
     } else {
-       if (commutation_interval < POLLING_MODE_THRESHOLD) {
+       if (commutation_interval < polling_mode_changeover) {
             old_routine = 0;
             enableCompInterrupts(); // enable interrupt
         }
@@ -1684,6 +1766,16 @@ void runBrushedLoop()
  */
 static void checkDeviceInfo(void)
 {
+#ifdef NXP
+    uint32_t pflashBlockBase  = 0U;
+    uint32_t pflashTotalSize  = 0U;
+    uint32_t pflashSectorSize = 0U;
+
+    //Get flash properties
+    FLASH_API->flash_get_property(&s_flashDriver, kFLASH_PropertyPflashBlockBaseAddr, &pflashBlockBase);
+    FLASH_API->flash_get_property(&s_flashDriver, kFLASH_PropertyPflashSectorSize, &pflashSectorSize);
+    FLASH_API->flash_get_property(&s_flashDriver, kFLASH_PropertyPflashTotalSize, &pflashTotalSize);
+#else
 #define DEVINFO_MAGIC1 0x5925e3da
 #define DEVINFO_MAGIC2 0x4eb863d9
 
@@ -1709,6 +1801,7 @@ static void checkDeviceInfo(void)
             eeprom_address = 0x0801f800;
             break;
     }
+#endif
 
     // TODO: check pin code and reboot to bootloader if incorrect
 
@@ -1717,11 +1810,19 @@ static void checkDeviceInfo(void)
 int main(void)
 {
 
+#ifdef NXP
+    initCorePeripherals();
+    checkDeviceInfo();
+    loadEEpromSettings();
+    enableCorePeripherals();
+    initAfterJump();
+#else
     initAfterJump();
     checkDeviceInfo();
     initCorePeripherals();
     enableCorePeripherals();
     loadEEpromSettings();
+#endif
 
     if (VERSION_MAJOR != eepromBuffer.version.major || VERSION_MINOR != eepromBuffer.version.minor || EEPROM_VERSION > eepromBuffer.eeprom_version) {
         eepromBuffer.version.major = VERSION_MAJOR;
@@ -1766,6 +1867,9 @@ int main(void)
 #endif
 #ifdef USE_LED_STRIP
     send_LED_RGB(125, 0, 0);
+#endif
+#ifdef USE_RGB_LED
+     setIndividualRGBLed(1,0,0);
 #endif
 
 #ifdef USE_CRSF_INPUT
@@ -1851,7 +1955,8 @@ int main(void)
 #endif
 
     while (1) {
-e_com_time = ((commutation_intervals[0] + commutation_intervals[1] + commutation_intervals[2] + commutation_intervals[3] + commutation_intervals[4] + commutation_intervals[5]) + 4) >> 1; // COMMUTATION INTERVAL IS 0.5US INCREMENTS
+e_com_time = ((commutation_intervals[0] + commutation_intervals[1] + commutation_intervals[2] + commutation_intervals[3] + commutation_intervals[4] + commutation_intervals[5]) + 4) >> 1; // COMMUTATION INTERVAL IS 0.5US INCREMENTS 
+
 #if defined(FIXED_DUTY_MODE) || defined(FIXED_SPEED_MODE)
         setInput();
 #endif
@@ -1869,15 +1974,20 @@ e_com_time = ((commutation_intervals[0] + commutation_intervals[1] + commutation
      }
 #endif
 #endif
-
 if(zero_crosses < 5){
-	  min_bemf_counts_up = TARGET_MIN_BEMF_COUNTS * 2;
-		min_bemf_counts_down = TARGET_MIN_BEMF_COUNTS * 2;
+    if(eepromBuffer.bi_direction){
+     min_bemf_counts_up = TARGET_MIN_BEMF_COUNTS + 1;
+     min_bemf_counts_down = TARGET_MIN_BEMF_COUNTS + 1;
+   }else{
+     min_bemf_counts_up = TARGET_MIN_BEMF_COUNTS * 2;
+     min_bemf_counts_down = TARGET_MIN_BEMF_COUNTS * 2;
+   }
 }else{
-	 min_bemf_counts_up = TARGET_MIN_BEMF_COUNTS;
-	min_bemf_counts_down = TARGET_MIN_BEMF_COUNTS;
+	  min_bemf_counts_up = TARGET_MIN_BEMF_COUNTS;
+	  min_bemf_counts_down = TARGET_MIN_BEMF_COUNTS;
 }
-        RELOAD_WATCHDOG_COUNTER();
+
+       RELOAD_WATCHDOG_COUNTER();
 
         if (eepromBuffer.variable_pwm == 1) {      // uses range defined by pwm frequency setting
             tim1_arr = map(commutation_interval, 96, 200, TIMER1_MAX_ARR / 2,
@@ -1943,21 +2053,6 @@ if(zero_crosses < 5){
 
         if (tenkhzcounter > LOOP_FREQUENCY_HZ) { // 1s sample interval 10000
             consumed_current += (actual_current << 16) / 360;
-            switch (dshot_extended_telemetry) {
-
-            case 1:
-                send_extended_dshot = 0b0010 << 8 | degrees_celsius;
-                dshot_extended_telemetry = 2;
-                break;
-            case 2:
-                send_extended_dshot = 0b0110 << 8 | (uint8_t)actual_current / 50;
-                dshot_extended_telemetry = 3;
-                break;
-            case 3:
-                send_extended_dshot = 0b0100 << 8 | (uint8_t)(battery_voltage / 25);
-                dshot_extended_telemetry = 1;
-                break;
-            }
             tenkhzcounter = 0;
         }
 
@@ -2005,6 +2100,19 @@ if(zero_crosses < 5){
         }
 
 #if !defined(MCU_G031) && !defined(NEED_INPUT_READY)
+#ifdef NXP
+	if (dshot_telemetry && (commutation_interval > DSHOT_PRIORITY_THRESHOLD)) {
+		NVIC_SetPriority(IC_DMA_IRQ_NAME, 0);
+		NVIC_SetPriority(COM_TIMER_IRQ, 1);
+		NVIC_SetPriority(COMP0_IRQ, 1);
+		NVIC_SetPriority(COMP1_IRQ, 1);
+	} else {
+		NVIC_SetPriority(IC_DMA_IRQ_NAME, 1);
+		NVIC_SetPriority(COM_TIMER_IRQ, 0);
+		NVIC_SetPriority(COMP0_IRQ, 0);
+		NVIC_SetPriority(COMP1_IRQ, 0);
+	}
+#else
         if (dshot_telemetry && (commutation_interval > DSHOT_PRIORITY_THRESHOLD)) {
              NVIC_SetPriority(IC_DMA_IRQ_NAME, 0);
              NVIC_SetPriority(COM_TIMER_IRQ, 1);
@@ -2014,6 +2122,7 @@ if(zero_crosses < 5){
              NVIC_SetPriority(COM_TIMER_IRQ, 0);
              NVIC_SetPriority(COMPARATOR_IRQ, 0);
          }
+#endif
 #endif
         if (send_telemetry) {
 #ifdef USE_SERIAL_TELEMETRY
@@ -2031,6 +2140,9 @@ if(zero_crosses < 5){
 #if defined(STMICRO)
             ADC_DMA_Callback();
             LL_ADC_REG_StartConversion(ADC1);
+#ifdef USE_ADC_1_2
+          LL_ADC_REG_StartConversion(ADC2);
+#endif          
             converted_degrees = __LL_ADC_CALC_TEMPERATURE(3300, ADC_raw_temp, LL_ADC_RESOLUTION_12B);
 #endif
 #ifdef MCU_GDE23
@@ -2042,16 +2154,38 @@ if(zero_crosses < 5){
 #ifdef ARTERY
             ADC_DMA_Callback();
             adc_ordinary_software_trigger_enable(ADC1, TRUE);
+    #ifdef USE_NTC
+            converted_degrees = getNTCDegrees(ADC_raw_ntc);
+    #else     
             converted_degrees = getConvertedDegrees(ADC_raw_temp);
+    #endif
+#endif
+#ifdef NXP
+            //Call ADC_DMA callback to get raw data
+            ADC_DMA_Callback();
+
+            //Convert temperature data to actual temperature in degrees Celsius
+            converted_degrees = computeTemperature(ADC_raw_temp[0], ADC_raw_temp[1]);
+
+            //Start ADC conversion
+            startADCConversion();
 #endif
 #ifdef WCH
             startADCConversion( );
             converted_degrees = getConvertedDegrees(ADC_raw_temp);
 #endif
             degrees_celsius = converted_degrees;
+#ifdef NXP
+            //MCXA has 16-bit ADC data
+            battery_voltage = ((7 * battery_voltage) + ((ADC_raw_volts * 3300 / 65535 * VOLTAGE_DIVIDER) / 100)) / 8;
+            smoothed_raw_current = getSmoothedCurrent();
+            //Actual current is in 10mA, so 1 = 10mA
+            actual_current = (((smoothed_raw_current * 3300 / 65535) - CURRENT_OFFSET) * 100) / (MILLIVOLT_PER_AMP);
+#else
             battery_voltage = ((7 * battery_voltage) + ((ADC_raw_volts * 3300 / 4095 * VOLTAGE_DIVIDER) / 100)) >> 3;
             smoothed_raw_current = getSmoothedCurrent();
             actual_current = ((smoothed_raw_current * 3300 / 41) - (CURRENT_OFFSET * 100)) / (MILLIVOLT_PER_AMP);
+#endif
             if (actual_current < 0) {
                 actual_current = 0;
             }             
