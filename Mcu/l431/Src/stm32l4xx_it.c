@@ -24,8 +24,8 @@
 #include "ADC.h"
 #include "targets.h"
 #include "IO.h"
-//#include "WS2812.h"
-
+#include "common.h"
+#include "comparator.h"
 
 extern void transfercomplete();
 extern void PeriodElapsedCallback();
@@ -33,14 +33,14 @@ extern void interruptRoutine();
 extern void tenKhzRoutine();
 extern void processDshot();
 
-extern char send_telemetry;
+extern volatile char send_telemetry;
 uint16_t interrupt_time = 0;
-extern char servoPwm;
-extern char dshot_telemetry;
-extern char armed;
-extern char out_put;
-extern uint8_t compute_dshot_flag;
-extern uint32_t commutation_interval;
+extern volatile char servoPwm;
+extern volatile char dshot_telemetry;
+extern volatile char armed;
+extern volatile char out_put;
+extern volatile uint8_t compute_dshot_flag;
+extern volatile uint32_t commutation_interval;
 
 /******************************************************************************/
 /*           Cortex-M4 Processor Interruption and Exception Handlers          */
@@ -275,11 +275,18 @@ void TIM1_UP_TIM16_IRQHandler(void)
 
 void COMP_IRQHandler(void)
 {
-	  if(LL_EXTI_IsActiveFlag_0_31(EXTI_LINE) != RESET)
-	  {
-	    LL_EXTI_ClearFlag_0_31(EXTI_LINE);
-	    interruptRoutine();
-	  }
+
+    if (LL_EXTI_IsActiveFlag_0_31(EXTI_LINE) != RESET) {
+      if((INTERVAL_TIMER->CNT) > ((average_interval>>1))){
+       LL_EXTI_ClearFlag_0_31(EXTI_LINE);
+      interruptRoutine();
+  }else{ 
+      if (getCompOutputLevel() == rising){
+      LL_EXTI_ClearFlag_0_31(EXTI_LINE);
+  }
+}
+}
+  
 }
 
 void EXTI15_10_IRQHandler(void)

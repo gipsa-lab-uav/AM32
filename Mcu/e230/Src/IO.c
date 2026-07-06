@@ -15,17 +15,22 @@
 
 char ic_timer_prescaler = CPU_FREQUENCY_MHZ / 5 - 2;
 uint32_t dma_buffer[64] = { 0 };
-char out_put = 0;
+volatile char out_put = 0;
 uint8_t buffer_padding = 0;
 uint8_t buffer_size = 32;
 uint16_t change_time = 0;
 
 void receiveDshotDma()
 {
+    #ifdef USE_TIMER_2_CHANNEL_0
     RCU_REG_VAL(RCU_TIMER2RST) |= BIT(RCU_BIT_POS(RCU_TIMER2RST));
     RCU_REG_VAL(RCU_TIMER2RST) &= ~BIT(RCU_BIT_POS(RCU_TIMER2RST));
+    #endif
+    #ifdef USE_TIMER_14_CHANNEL_0
     RCU_REG_VAL(RCU_TIMER14RST) |= BIT(RCU_BIT_POS(RCU_TIMER14RST));
     RCU_REG_VAL(RCU_TIMER14RST) &= ~BIT(RCU_BIT_POS(RCU_TIMER14RST));
+    #endif
+
     TIMER_CHCTL0(IC_TIMER_REGISTER) = 0x41;
     TIMER_CHCTL2(IC_TIMER_REGISTER) = 0xa;
     TIMER_PSC(IC_TIMER_REGISTER) = ic_timer_prescaler;
@@ -43,10 +48,15 @@ void receiveDshotDma()
 
 void sendDshotDma()
 {
+    #ifdef USE_TIMER_2_CHANNEL_0
     RCU_REG_VAL(RCU_TIMER2RST) |= BIT(RCU_BIT_POS(RCU_TIMER2RST));
     RCU_REG_VAL(RCU_TIMER2RST) &= ~BIT(RCU_BIT_POS(RCU_TIMER2RST));
+    #endif
+    #ifdef USE_TIMER_14_CHANNEL_0
     RCU_REG_VAL(RCU_TIMER14RST) |= BIT(RCU_BIT_POS(RCU_TIMER14RST));
     RCU_REG_VAL(RCU_TIMER14RST) &= ~BIT(RCU_BIT_POS(RCU_TIMER14RST));
+    #endif
+    
     TIMER_CHCTL0(IC_TIMER_REGISTER) = 0x60;
     TIMER_CHCTL2(IC_TIMER_REGISTER) = 0x3;
     TIMER_PSC(IC_TIMER_REGISTER) = output_timer_prescaler;
